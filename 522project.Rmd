@@ -1,0 +1,199 @@
+---
+title: 'Project 1: Survey Design'
+author: "Yijun Jiang, Ran Zhou"
+date: "3/1/2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Introduction
+
+The goal of this project is to design a survey to decide how much should Duke students who take courses in natural science departments expect to spend on required textbooks if they buy them at the Duke textbook store? We collected course lists of 2018 spring for all the departments in natural science department from Dukehub registration page. We included only courses numbered 699 and lower, and we exclude course numbers for independent studies.W Then we collected prices for each course from Duke textbook online store. 
+
+# Install Libraries and Load Data
+```{r, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(ggpubr)
+library(survey)
+textbooks <- (read.csv("~/Desktop/STA_522/price.csv"))
+```
+
+
+# Data Exploration and Survey Design
+
+The total number of classes in natural science department we found is 286. We decide to use a total sample size of 100 for this survey design.
+
+#### Stage 1: Identify the names and the population sizes of all departments
+```{r message=FALSE, warning=FALSE}
+course_size = textbooks %>% group_by(stratum) %>% summarise(pop_size = n())
+kable(course_size)
+```
+
+#### Design 1: Proportional to Sample Size (PPS) Sampling
+
+From the above table, we figure out that it does not make sense to give two departments with very different population size an equal probability of being chosen for the sample. In this case, we use proportional to sample size (PPS) sampling to address this issue. 
+
+In this case, we will depend on the known population size to decide the probability of a particular sampling unit.
+$$\pi_i = \frac{nM_i}{\sum_{i=1}^{N}M_i}$$.
+
+
+```{r}
+n = 100
+course_size$sample_size = round(n * course_size$pop_size/sum(course_size$pop_size))
+kable(course_size)
+```
+
+#### Stage 2: Price Distribution within Department
+
+Based on our own experience, the prices and number of the textbooks required vary significanly between lower-level courses and upper-level courses within one specific department. Introductory courses always require texbooks which contain basic theories and proves. On the contrary, professors in higher level courses are more likely to use booklets, powerpoints, or even projects to accomodate their lectures.
+
+(1) Textbook price distribution of each department
+
+```{r, include=FALSE}
+ds = textbooks[which(textbooks$stratum %in% "psycho"),]
+Psy = sample_n(ds,size = 50,replace = TRUE)
+ggplot(ds, aes(x=ID,y = Price))+geom_point()+ ggtitle("# of textbooks in Psychology")
+```
+
+```{r warning=FALSE}
+plot_price = function(df, course){
+  df = df[df$stratum == course,]
+  ggplot(df, aes(x=ID,y = Price))+
+    geom_point(size = 0.5)+  
+    ggtitle(paste0("# of textbooks in ",course))+ 
+    theme(plot.title = element_text(size=10))
+}
+```
+
+```{r message=FALSE, warning=FALSE}
+p1 = plot_price(textbooks, "psycho")
+p2 = plot_price(textbooks, "physics")
+p3 = plot_price(textbooks, "cs")
+p4 = plot_price(textbooks, "chemistry")
+p5 = plot_price(textbooks, "stats")
+p6 = plot_price(textbooks, "neuro")
+p7 = plot_price(textbooks, "anthro")
+p8 = plot_price(textbooks, "biology")
+p9 = plot_price(textbooks, "mathematics")
+ggarrange(p1,p2,p3,p4,p5,p6,p7,p8,p9,ncol = 3, nrow = 3)
+```
+
+(2) Mean price of three departments at each x-00 level.
+```{r, include=FALSE}
+ds = textbooks[which(textbooks$stratum %in% "psycho"),]
+Phy = sample_n(ds,size = 50,replace = TRUE)
+Psy = Psy %>% mutate(group = ifelse(ID < 100,0, 
+                                    ifelse(100<=ID & ID<200,1, 
+                                           ifelse(200<=ID & ID < 300, 2,
+                                               ifelse(300<=ID & ID<400,3,
+                                                      ifelse(400<=ID & ID<500, 4,
+                                                             ifelse(500<=ID & ID <600, 5,6))))
+                                                       ))) 
+price = Psy %>% group_by(group) %>% summarise(sum = sum(Price)) 
+count = Psy %>% group_by(group) %>% summarise(num = n())
+price %>% left_join(count, by = "group") %>% mutate(average_price = sum/num)
+```
+```{r, include=FALSE}
+ds = textbooks[which(textbooks$stratum %in% "physics"),]
+Phy = sample_n(ds,size = 50,replace = TRUE)
+ggplot(ds, aes(x=ID,y = Price))+geom_point()+ ggtitle("# of textbooks in Physics")
+```
+
+```{r, include=FALSE}
+Phy = Phy %>% mutate(group = ifelse(ID < 100,0, 
+                                    ifelse(100<=ID & ID<200,1, 
+                                           ifelse(200<=ID & ID < 300, 2,
+                                               ifelse(300<=ID & ID<400,3,
+                                                      ifelse(400<=ID & ID<500, 4,
+                                                             ifelse(500<=ID & ID <600, 5,6))))
+                                                       ))) 
+price = Phy %>% group_by(group) %>% summarise(sum = sum(Price)) 
+count = Phy %>% group_by(group) %>% summarise(num = n())
+price %>% left_join(count, by = "group") %>% mutate(average_price = sum/num)
+```
+
+```{r}
+get_level_summary = function(df, course){
+  df = df[df$stratum == course,]
+  df = df %>% mutate(group = ifelse(ID < 100,0, 
+                                    ifelse(100<=ID & ID<200,1, 
+                                           ifelse(200<=ID & ID < 300, 2,
+                                               ifelse(300<=ID & ID<400,3,
+                                                      ifelse(400<=ID & ID<500, 4,
+                                                             ifelse(500<=ID & ID <600, 5,6))))
+                                                       ))) 
+  price = df %>% group_by(group) %>% summarise(mean_price = round(mean(Price),2), num = n()) 
+  return(kable(price))
+}
+```
+
+```{r}
+get_level_summary(textbooks, "psycho")
+get_level_summary(textbooks, "physics")
+get_level_summary(textbooks, "mathematics")
+```
+
+#### Design 2: Proportional to Sample Size (PPS) Sampling with Department
+
+The textbook prices of courses below 400 level are much higher than prices of courses above 400 level for most of the courses. To make sure we have sample from both high level courses and low level courses, we divide textbooks in one department into two stratums (below 400 level vs. above 400 level).
+
+We also noticed that the number of courses below 400 level is much less than number of courses above 400 level. It seems that we can use proportional to sample size (PPS) sampling for our second stage.  
+
+
+***Our Design Summary: ***
+
+ ***1) Use pps sampling to sample across different departments.***
+ 
+ ***2) Use pps sampling to sample within each departments.***
+ 
+```{r}
+textbooks$over_level_400 = ifelse(textbooks$ID>=400, 1, 0)
+course_size_sub = textbooks %>% 
+  group_by(stratum,over_level_400) %>%
+  summarise(pop_size_sub = n()) %>%
+  left_join(course_size, by = "stratum")
+course_size_sub = course_size_sub %>%
+  mutate(sample_size_sub = round(sample_size*pop_size_sub/pop_size))
+kable(course_size_sub)
+```
+ 
+ 
+# Sampling
+```{r}
+sampledata = c()
+for (i in 1:length(course_size_sub$stratum)){
+  subject = course_size_sub$stratum[i]
+  level = course_size_sub$over_level_400[i]
+  num = course_size_sub$sample_size_sub[i]
+  
+  # the population where we need to sample from
+  selection = textbooks$stratum == subject & textbooks$over_level_400 == level
+  ds = textbooks[selection,]
+
+  # sample from the population
+  sample_size = dim(ds)[1]
+  sampledata = rbind(sampledata, ds[sample(1:sample_size, num, replace = FALSE),])
+}
+
+```
+
+# Modeling 
+```{r}
+# get weight for each sample
+pw1 = 100 * course_size_sub$pop_size/sum(course_size$pop_size)
+wt1 = 1/pw1
+pw2 = course_size_sub$sample_size * course_size_sub$pop_size_sub/course_size_sub$sample_size_sub
+wt2 = 1/pw2
+course_size_sub$wt = wt1*wt2
+sampledata = sampledata %>%
+  left_join(course_size_sub[,c("stratum","over_level_400","wt")], by = c("stratum","over_level_400"))
+```
+
+```{r}
+des = svydesign(~1, weights = ~wt, data = sampledata)
+svytotal(~Price, des)
+```
+ 
